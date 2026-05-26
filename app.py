@@ -1,7 +1,9 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, request, session, redirect
+from werkzeug.security import generate_password_hash
 from database.db import get_db, init_db, seed_db
 
 app = Flask(__name__)
+app.secret_key = "spendly-dev-secret-key"
 
 
 # ------------------------------------------------------------------ #
@@ -13,8 +15,43 @@ def landing():
     return render_template("landing.html")
 
 
-@app.route("/register")
+@app.route("/register", methods=["GET", "POST"])
 def register():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+
+        if not name:
+            return render_template("register.html", error="Please enter your full name.")
+        if not email:
+            return render_template("register.html", error="Please enter your email address.")
+        if not password:
+            return render_template("register.html", error="Please enter a password.")
+        if len(password) < 8:
+            return render_template("register.html", error="Password must be at least 8 characters.")
+
+        conn = get_db()
+        existing = conn.execute(
+            "SELECT id FROM users WHERE email = ?", (email,)
+        ).fetchone()
+        if existing:
+            conn.close()
+            return render_template("register.html", error="An account with this email already exists.")
+
+        password_hash = generate_password_hash(password)
+        cursor = conn.execute(
+            "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
+            (name, email, password_hash)
+        )
+        user_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        session["user_id"] = user_id
+        session["user_name"] = name
+        return redirect("/")
+
     return render_template("register.html")
 
 
