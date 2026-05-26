@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, session, redirect
-from werkzeug.security import generate_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
 from database.db import get_db, init_db, seed_db
 
 app = Flask(__name__)
@@ -55,8 +55,35 @@ def register():
     return render_template("register.html")
 
 
-@app.route("/login")
+@app.route("/login", methods=["GET", "POST"])
 def login():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+
+        if not email:
+            return render_template("login.html", error="Please enter your email address.")
+        if not password:
+            return render_template("login.html", error="Please enter your password.")
+
+        conn = get_db()
+        user = conn.execute(
+            "SELECT id, name, password_hash FROM users WHERE email = ?", (email,)
+        ).fetchone()
+
+        if not user:
+            conn.close()
+            return render_template("login.html", error="Invalid email or password.")
+
+        if not check_password_hash(user["password_hash"], password):
+            conn.close()
+            return render_template("login.html", error="Invalid email or password.")
+
+        conn.close()
+        session["user_id"] = user["id"]
+        session["user_name"] = user["name"]
+        return redirect("/")
+
     return render_template("login.html")
 
 
@@ -71,7 +98,8 @@ def terms():
 
 @app.route("/logout")
 def logout():
-    return "Logout — coming in Step 3"
+    session.clear()
+    return redirect("/")
 
 
 @app.route("/profile")
